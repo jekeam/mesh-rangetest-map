@@ -7,7 +7,6 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script src="https://unpkg.com/papaparse@5/papaparse.min.js"></script>
-    <!-- Leaflet.heat plugin -->
     <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
     <style>
         html, body {
@@ -15,12 +14,10 @@
             margin: 0;
             padding: 0;
         }
-
         #map {
             height: 100%;
             width: 100%;
         }
-
         #upload-container {
             position: absolute;
             top: 10px;
@@ -32,7 +29,6 @@
             border-radius: 5px;
             box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
         }
-
         #snr-legend {
             position: fixed;
             bottom: 50px;
@@ -44,23 +40,20 @@
             border-radius: 5px;
             font-family: Arial, sans-serif;
             font-size: 12px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
         }
-
         #snr-gradient {
             width: 200px;
             height: 15px;
             background: linear-gradient(to right, red, orange, yellow, limegreen, green);
             margin: 5px 0;
         }
-
         #snr-scale {
             display: flex;
             justify-content: space-between;
             font-size: 10px;
             width: 200px;
         }
-
         .note {
             font-size: 10px;
             margin-top: 5px;
@@ -91,46 +84,37 @@
 </div>
 
 <script>
-    const map = L.map('map').setView([40.75, -74], 13);
+    // Отключаем стандартную атрибуцию Leaflet ("Leaflet | © ...")
+    const map = L.map('map', {
+        attributionControl: false
+    }).setView([40.75, -74], 13);
 
-    // Tile layers
+    // Добавляем attribution control БЕЗ префикса "Leaflet"
+    L.control.attribution({ prefix: '' }).addTo(map);
+
     const tileLayers = {
-    "Yandex Map": L.tileLayer('https://core-renderer-tiles.maps.yandex.net/tiles?l=map&v=2.32.0&x={x}&y={y}&z={z}&scale=1&lang=ru_RU', {
-        attribution: '© Yandex',
-        maxZoom: 19
-    }),
-    "Yandex Satellite": L.tileLayer('https://core-sat.maps.yandex.net/tiles?l=sat&v=3.820.0&x={x}&y={y}&z={z}&scale=1&lang=ru_RU', {
-        attribution: '© Yandex',
-        maxZoom: 19
-    }),
-        "Yandex Satellite": L.tileLayer('https://core-sat.maps.yandex.net/tiles?l=sat&v=3.820.0&x={x}&y={y}&z={z}&scale=1&lang=ru_RU', {
-            attribution: '© Yandex',
-            maxZoom: 19
-        }),
-        "OpenStreetMap": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        "OpenTopoMap": L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+            attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)',
+            maxZoom: 17
         }),
         "Esri WorldImagery": L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
             attribution: '&copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
         }),
-        "OpenTopoMap": L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-            attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'
-        }),
-        "CartoDB Positron": L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; <a href="https://carto.com/attributions">CartoDB</a> | Data: <a href="https://openstreetmap.org">OpenStreetMap</a>'
-        }),
-        "CartoDB Positron (No Labels)": L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/light_nolabels/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; <a href="https://carto.com/attributions">CartoDB</a> | Data: <a href="https://openstreetmap.org">OpenStreetMap</a>'
+        "OpenStreetMap": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }),
         "CartoDB Dark Matter (No Labels)": L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/dark_nolabels/{z}/{x}/{y}{r}.png', {
             attribution: '&copy; <a href="https://carto.com/attributions">CartoDB</a> | Data: <a href="https://openstreetmap.org">OpenStreetMap</a>'
         }),
-        "CartoDB Dark Matter": L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; <a href="https://carto.com/attributions">CartoDB</a> | Data: <a href="https://openstreetmap.org">OpenStreetMap</a>'
+        "Yandex Map": L.tileLayer('https://core-renderer-tiles.maps.yandex.net/tiles?l=map&v=2.32.0&x={x}&y={y}&z={z}&scale=1&lang=ru_RU', {
+            attribution: '&copy; Yandex',
+            maxZoom: 19
         })
+        // Примечание: Яндекс может быть смещён — используйте только для ориентира
     };
 
-    tileLayers["CartoDB Dark Matter (No Labels)"].addTo(map);
+    // Слой по умолчанию — точный и без смещения
+    tileLayers["OpenTopoMap"].addTo(map);
     L.control.layers(tileLayers).addTo(map);
 
     let currentHeatmap = null;
@@ -141,7 +125,6 @@
         const file = event.target.files[0];
         if (!file) return;
 
-        // Remove previous heatmap
         if (currentHeatmap) {
             map.removeLayer(currentHeatmap);
             currentHeatmap = null;
@@ -150,7 +133,7 @@
         Papa.parse(file, {
             header: true,
             skipEmptyLines: true,
-            complete: function (results) {
+            complete: function(results) {
                 createHeatmap(results.data);
             }
         });
@@ -161,7 +144,6 @@
         let bounds = L.latLngBounds();
 
         for (const row of data) {
-            // Фильтрация как в Python: payload должен содержать "seq <число>"
             if (!row.payload || !/seq\s+\d+/.test(row.payload)) continue;
 
             const lat = parseFloat(row['rx lat']);
@@ -173,10 +155,8 @@
                 lat >= -90 && lat <= 90 &&
                 lon >= -180 && lon <= 180
             ) {
-                // Normalize SNR: [-21, 12] → [0, 1]
                 let weight = (snr + 21) / 33;
                 weight = Math.max(0, Math.min(1, weight));
-
                 heatData.push([lat, lon, weight]);
                 bounds.extend([lat, lon]);
             }
@@ -187,7 +167,6 @@
             return;
         }
 
-        // Create heatmap
         currentHeatmap = L.heatLayer(heatData, {
             radius: 20,
             blur: 10,

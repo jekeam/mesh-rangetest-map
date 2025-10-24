@@ -53,10 +53,10 @@ def create_heatmap_layer(csv_file):
 
     # Создаём FeatureGroup
     layer_name = os.path.basename(csv_file).replace(".csv", "")
-    fg = folium.FeatureGroup(name=layer_name)
+    fg = folium.FeatureGroup(name=str(layer_name))
 
     # Добавляем heatmap
-    HeatMap(heat_data, radius=20, blur=10, min_opacity=0.4, max_val=1.0).add_to(fg)
+    HeatMap(heat_data, radius=20, blur=10, min_opacity=0.4).add_to(fg)
 
     return fg
 
@@ -76,6 +76,7 @@ def add_snr_legend(m):
         font-family: Arial, sans-serif;
         font-size: 12px;
         box-shadow: 0 0 10px rgba(0,0,0,0.5);
+        
         ">
         <b>SNR (dB)</b><br>
         <div style="display: block;">
@@ -92,6 +93,7 @@ def add_snr_legend(m):
             <i>Примечание: На карте "горячие" области (красно-жёлтые) = высокий SNR (хороший сигнал).</i>
         </div>
     </div>
+    <style>.leaflet-control-attribution {display: none !important;}</style>
     """
     m.get_root().html.add_child(folium.Element(legend_html))
 
@@ -131,8 +133,6 @@ def main():
             secondary_length_unit="miles",
         )
     )
-
-
 
     # Добавляем базовые слои
     folium.TileLayer(
@@ -193,7 +193,7 @@ def main():
 
     output_file = "rangetest-map.html"
     m.save(output_file)
-    print(f"✅ Готово! Откройте '{output_file}' в браузере.")
+    print(f"✅ Готово! Откройте '{os.path.abspath(output_file)}' в браузере.")
 
 
 if __name__ == "__main__":
