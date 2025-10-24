@@ -1,24 +1,23 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Meshtastic Range Test Map</title>
+    <title>Meshtastic Range Test Heatmap</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/papaparse/papaparse.min.js"></script> 
+    <script src="https://unpkg.com/papaparse/papaparse.min.js"></script>
+    <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
     <style>
         html, body {
             height: 100%;
             margin: 0;
             padding: 0;
         }
-
         #map {
             height: 100%;
             width: 100%;
         }
-
         #upload-container {
             position: absolute;
             top: 10px;
@@ -30,150 +29,96 @@
             border-radius: 5px;
             box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
         }
-
-        h1 {
-            position: absolute;
-            top: 10px;
-            left: 50%;
-            transform: translateX(-50%);
-            color: black;
-            font-family: Arial, sans-serif;
-        }
     </style>
 </head>
 <body>
 
     <div id="upload-container">
-        <label for="csv-upload">Upload Meshtastic Range Test File:</label>
+        <label for="csv-upload">Загрузить CSV Meshtastic Range Test:</label>
         <input type="file" id="csv-upload" accept=".csv" />
     </div>
 
     <div id="map"></div>
 
     <script>
-        // Default map center
+        // === Инициализация карты ===
         const map = L.map('map').setView([40.75, -74], 13);
 
-        // Map options
-        const tileLayerOpenStreetMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        // --- Базовые слои ---
+        const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors'
+        }).addTo(map); // <-- по умолчанию
+
+        const darkMatter = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/dark_nolabels/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; <a href="https://carto.com/attributions">CartoDB</a> | Data: OpenStreetMap'
         });
 
-        const tileLayerEsriWorldImagery = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-            attribution: '&copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+        const esri = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: '&copy; <a href="https://www.esri.com/">Esri</a>'
         });
 
-        const tileLayerOpenTopoMap = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-            attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'
-        });
-
-        const tileLayerCartoDBPositron = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; <a href="https://carto.com/attributions">CartoDB</a> | Data: <a href="https://openstreetmap.org">OpenStreetMap</a>'
-        });
-
-        const tileLayerCartoDBPositronNoLabels = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/light_nolabels/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; <a href="https://carto.com/attributions">CartoDB</a> | Data: <a href="https://openstreetmap.org">OpenStreetMap</a>'
-        });
-
-        const tileLayerCartoDBDarkMatterNoLabels = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/dark_nolabels/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; <a href="https://carto.com/attributions">CartoDB</a> | Data: <a href="https://openstreetmap.org">OpenStreetMap</a>'
-        });
-
-        const tileLayerCartoDBDarkMatter = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; <a href="https://carto.com/attributions">CartoDB</a> | Data: <a href="https://openstreetmap.org">OpenStreetMap</a>'
-        });
-
-        // Default to CartoDB Dark Matter (No Labels) map layer
-        tileLayerCartoDBDarkMatterNoLabels.addTo(map);
-
-        // Other map options
         const baseMaps = {
-            "OpenStreetMap": tileLayerOpenStreetMap,
-            "Esri WorldImagery": tileLayerEsriWorldImagery,
-            "OpenTopoMap": tileLayerOpenTopoMap,
-            "CartoDB Positron": tileLayerCartoDBPositron,
-            "CartoDB Positron (No Labels)": tileLayerCartoDBPositronNoLabels,
-            "CartoDB Dark Matter (No Labels)": tileLayerCartoDBDarkMatterNoLabels,
-            "CartoDB Dark Matter": tileLayerCartoDBDarkMatter
+            "OpenStreetMap": osm,
+            "CartoDB Dark Matter": darkMatter,
+            "Esri WorldImagery": esri
         };
 
         L.control.layers(baseMaps).addTo(map);
 
-        // CSV loading logic
+        // === Обработчик загрузки ===
         document.getElementById('csv-upload').addEventListener('change', handleFileUpload);
 
         function handleFileUpload(event) {
             const file = event.target.files[0];
             if (file && file.type === 'text/csv') {
-                parseCSV(file);
+                Papa.parse(file, {
+                    header: true,
+                    skipEmptyLines: true,
+                    complete: results => processData(results.data)
+                });
             } else {
-                alert('Please upload a valid CSV file.');
+                alert('Пожалуйста, загрузите корректный CSV-файл.');
             }
         }
 
-        function parseCSV(file) {
-            Papa.parse(file, {
-                complete: function(results) {
-                    console.log("CSV parsed", results);
-                    processData(results.data);
-                },
-                header: true,
-                skipEmptyLines: true
-            });
-        }
-
         function processData(data) {
-            // Keep track of the bounds of the points
+            const heatPoints = [];
             let bounds = L.latLngBounds();
 
-            // Read data and determine colors for points based on SNR
             data.forEach(row => {
                 const lat = parseFloat(row['rx lat']);
                 const lon = parseFloat(row['rx long']);
                 const snr = parseFloat(row['rx snr']);
-                const elevation = row['rx elevation'];
 
                 if (!isNaN(lat) && !isNaN(lon) && !isNaN(snr)) {
-                    let color = 'red';
+                    // Нормализация SNR в диапазон [0, 1]
+                    const clipped = Math.max(-21, Math.min(12, snr));
+                    const weight = (clipped - (-21)) / (12 - (-21));
 
-                    // Determine marker color based on SNR
-                    if (snr > 15) {
-                        // bad SNR
-                        color = 'gray';
-                    } else {
-                        // Normalize SNR
-                        const normalizedSNR = (snr - (-21)) / (12 - (-21));
-                        color = getColorFromSNR(normalizedSNR);
-                    }
-
-                    const popupContent = `<strong>SNR:</strong> ${snr}<br><strong>Elevation:</strong> ${elevation}`;
-                    
-                    // Generate the markers
-                    const marker = L.circleMarker([lat, lon], {
-                        radius: 7,
-                        fillColor: color,
-                        color: color,
-                        weight: 1,
-                        opacity: 1,
-                        fillOpacity: 0.7
-                    })
-                    .bindPopup(popupContent)
-                    .addTo(map);
-
-                    // Set bounds around the markers
+                    heatPoints.push([lat, lon, weight]);
                     bounds.extend([lat, lon]);
                 }
             });
 
-            // Center the map
-            map.fitBounds(bounds);
-        }
+            if (heatPoints.length === 0) {
+                alert("В CSV нет корректных данных.");
+                return;
+            }
 
-        function getColorFromSNR(normalizedSNR) {
-            const r = Math.floor((1 - normalizedSNR) * 255);
-            const g = Math.floor(normalizedSNR * 255);
-            const b = 0;
-            return `rgb(${r}, ${g}, ${b})`;
+            // --- Очистка предыдущих слоёв ---
+            if (window.currentHeatLayer) {
+                map.removeLayer(window.currentHeatLayer);
+            }
+
+            // --- Создание тепловой карты ---
+            window.currentHeatLayer = L.heatLayer(heatPoints, {
+                radius: 20,
+                blur: 25,
+                minOpacity: 0.4,
+                maxZoom: 12
+            }).addTo(map);
+
+            map.fitBounds(bounds);
         }
     </script>
 
