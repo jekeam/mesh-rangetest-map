@@ -1,23 +1,26 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Meshtastic Range Test Heatmap</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/papaparse/papaparse.min.js"></script>
-    <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+    <script src="https://unpkg.com/papaparse@5/papaparse.min.js"></script>
+    <!-- Leaflet.heat plugin -->
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
     <style>
         html, body {
             height: 100%;
             margin: 0;
             padding: 0;
         }
+
         #map {
             height: 100%;
             width: 100%;
         }
+
         #upload-container {
             position: absolute;
             top: 10px;
@@ -29,98 +32,172 @@
             border-radius: 5px;
             box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
         }
+
+        #snr-legend {
+            position: fixed;
+            bottom: 50px;
+            right: 10px;
+            z-index: 999;
+            background-color: white;
+            padding: 10px;
+            border: 2px solid grey;
+            border-radius: 5px;
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+        }
+
+        #snr-gradient {
+            width: 200px;
+            height: 15px;
+            background: linear-gradient(to right, red, orange, yellow, limegreen, green);
+            margin: 5px 0;
+        }
+
+        #snr-scale {
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            width: 200px;
+        }
+
+        .note {
+            font-size: 10px;
+            margin-top: 5px;
+            color: #555;
+        }
     </style>
 </head>
 <body>
 
-    <div id="upload-container">
-        <label for="csv-upload">Загрузить CSV Meshtastic Range Test:</label>
-        <input type="file" id="csv-upload" accept=".csv" />
+<div id="upload-container">
+    <label for="csv-upload">Upload Meshtastic Range Test File:</label>
+    <input type="file" id="csv-upload" accept=".csv"/>
+</div>
+
+<div id="map"></div>
+
+<div id="snr-legend">
+    <b>SNR (dB)</b>
+    <div id="snr-gradient"></div>
+    <div id="snr-scale">
+        <span>-21</span>
+        <span>-13</span>
+        <span>-5</span>
+        <span>4</span>
+        <span>12</span>
     </div>
+    <div class="note">Note: Red = poor signal, Green = strong signal</div>
+</div>
 
-    <div id="map"></div>
+<script>
+    const map = L.map('map').setView([40.75, -74], 13);
 
-    <script>
-        // === Инициализация карты ===
-        const map = L.map('map').setView([40.75, -74], 13);
+    // Tile layers
+    const tileLayers = {
+    "Yandex Map": L.tileLayer('https://core-renderer-tiles.maps.yandex.net/tiles?l=map&v=2.32.0&x={x}&y={y}&z={z}&scale=1&lang=ru_RU', {
+        attribution: '© Yandex',
+        maxZoom: 19
+    }),
+    "Yandex Satellite": L.tileLayer('https://core-sat.maps.yandex.net/tiles?l=sat&v=3.820.0&x={x}&y={y}&z={z}&scale=1&lang=ru_RU', {
+        attribution: '© Yandex',
+        maxZoom: 19
+    }),
+        "Yandex Satellite": L.tileLayer('https://core-sat.maps.yandex.net/tiles?l=sat&v=3.820.0&x={x}&y={y}&z={z}&scale=1&lang=ru_RU', {
+            attribution: '© Yandex',
+            maxZoom: 19
+        }),
+        "OpenStreetMap": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }),
+        "Esri WorldImagery": L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: '&copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+        }),
+        "OpenTopoMap": L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+            attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'
+        }),
+        "CartoDB Positron": L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; <a href="https://carto.com/attributions">CartoDB</a> | Data: <a href="https://openstreetmap.org">OpenStreetMap</a>'
+        }),
+        "CartoDB Positron (No Labels)": L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/light_nolabels/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; <a href="https://carto.com/attributions">CartoDB</a> | Data: <a href="https://openstreetmap.org">OpenStreetMap</a>'
+        }),
+        "CartoDB Dark Matter (No Labels)": L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/dark_nolabels/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; <a href="https://carto.com/attributions">CartoDB</a> | Data: <a href="https://openstreetmap.org">OpenStreetMap</a>'
+        }),
+        "CartoDB Dark Matter": L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; <a href="https://carto.com/attributions">CartoDB</a> | Data: <a href="https://openstreetmap.org">OpenStreetMap</a>'
+        })
+    };
 
-        // --- Базовые слои ---
-        const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors'
-        }).addTo(map); // <-- по умолчанию
+    tileLayers["CartoDB Dark Matter (No Labels)"].addTo(map);
+    L.control.layers(tileLayers).addTo(map);
 
-        const darkMatter = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/dark_nolabels/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; <a href="https://carto.com/attributions">CartoDB</a> | Data: OpenStreetMap'
+    let currentHeatmap = null;
+
+    document.getElementById('csv-upload').addEventListener('change', handleFileUpload);
+
+    function handleFileUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        // Remove previous heatmap
+        if (currentHeatmap) {
+            map.removeLayer(currentHeatmap);
+            currentHeatmap = null;
+        }
+
+        Papa.parse(file, {
+            header: true,
+            skipEmptyLines: true,
+            complete: function (results) {
+                createHeatmap(results.data);
+            }
         });
+    }
 
-        const esri = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-            attribution: '&copy; <a href="https://www.esri.com/">Esri</a>'
-        });
+    function createHeatmap(data) {
+        const heatData = [];
+        let bounds = L.latLngBounds();
 
-        const baseMaps = {
-            "OpenStreetMap": osm,
-            "CartoDB Dark Matter": darkMatter,
-            "Esri WorldImagery": esri
-        };
+        for (const row of data) {
+            // Фильтрация как в Python: payload должен содержать "seq <число>"
+            if (!row.payload || !/seq\s+\d+/.test(row.payload)) continue;
 
-        L.control.layers(baseMaps).addTo(map);
+            const lat = parseFloat(row['rx lat']);
+            const lon = parseFloat(row['rx long']);
+            const snr = parseFloat(row['rx snr']);
 
-        // === Обработчик загрузки ===
-        document.getElementById('csv-upload').addEventListener('change', handleFileUpload);
+            if (
+                !isNaN(lat) && !isNaN(lon) && !isNaN(snr) &&
+                lat >= -90 && lat <= 90 &&
+                lon >= -180 && lon <= 180
+            ) {
+                // Normalize SNR: [-21, 12] → [0, 1]
+                let weight = (snr + 21) / 33;
+                weight = Math.max(0, Math.min(1, weight));
 
-        function handleFileUpload(event) {
-            const file = event.target.files[0];
-            if (file && file.type === 'text/csv') {
-                Papa.parse(file, {
-                    header: true,
-                    skipEmptyLines: true,
-                    complete: results => processData(results.data)
-                });
-            } else {
-                alert('Пожалуйста, загрузите корректный CSV-файл.');
+                heatData.push([lat, lon, weight]);
+                bounds.extend([lat, lon]);
             }
         }
 
-        function processData(data) {
-            const heatPoints = [];
-            let bounds = L.latLngBounds();
-
-            data.forEach(row => {
-                const lat = parseFloat(row['rx lat']);
-                const lon = parseFloat(row['rx long']);
-                const snr = parseFloat(row['rx snr']);
-
-                if (!isNaN(lat) && !isNaN(lon) && !isNaN(snr)) {
-                    // Нормализация SNR в диапазон [0, 1]
-                    const clipped = Math.max(-21, Math.min(12, snr));
-                    const weight = (clipped - (-21)) / (12 - (-21));
-
-                    heatPoints.push([lat, lon, weight]);
-                    bounds.extend([lat, lon]);
-                }
-            });
-
-            if (heatPoints.length === 0) {
-                alert("В CSV нет корректных данных.");
-                return;
-            }
-
-            // --- Очистка предыдущих слоёв ---
-            if (window.currentHeatLayer) {
-                map.removeLayer(window.currentHeatLayer);
-            }
-
-            // --- Создание тепловой карты ---
-            window.currentHeatLayer = L.heatLayer(heatPoints, {
-                radius: 20,
-                blur: 25,
-                minOpacity: 0.4,
-                maxZoom: 12
-            }).addTo(map);
-
-            map.fitBounds(bounds);
+        if (heatData.length === 0) {
+            alert("No valid data found (requires 'payload' with 'seq N' and valid coordinates/SNR).");
+            return;
         }
-    </script>
 
+        // Create heatmap
+        currentHeatmap = L.heatLayer(heatData, {
+            radius: 20,
+            blur: 10,
+            minOpacity: 0.4,
+            maxZoom: 18,
+            max: 1.0
+        }).addTo(map);
+
+        map.fitBounds(bounds);
+    }
+</script>
 </body>
 </html>

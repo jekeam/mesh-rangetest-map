@@ -1,135 +1,200 @@
 import os
+import glob
 import pandas as pd
 import folium
-from folium.plugins import HeatMap
-from branca.element import Template, MacroElement
+from folium import plugins
+from folium.plugins import HeatMap, MeasureControl
 
 
-def create_heatmap(csv_files, output_html="rangetest-heatmap.html"):
-    all_data = []
-
-    for csv_file in csv_files:
-        if not os.path.exists(csv_file):
-            print(f"⚠️ Файл {csv_file} не найден, пропускаю.")
-            continue
-
+def create_heatmap_layer(csv_file):
+    try:
         df = pd.read_csv(csv_file)
-        cols = [c.lower().strip() for c in df.columns]
-        df.columns = cols
+    except Exception as e:
+        print(f"⚠️ Не удалось прочитать {csv_file}: {e}")
+        return None
 
-        lat_col = next((c for c in cols if "lat" in c), None)
-        lon_col = next((c for c in cols if "lon" in c or "lng" in c), None)
-        rssi_col = next((c for c in cols if "rssi" in c or "dbm" in c), None)
-        snr_col = next((c for c in cols if "snr" in c), None)
+    # Фильтрация
+    if "payload" not in df.columns:
+        print(f"⚠️ В {csv_file} нет колонки 'payload' — пропускаем.")
+        return None
 
-        if not lat_col or not lon_col:
-            print(f"⚠️ В файле {csv_file} нет координатных колонок, пропускаю.")
-            continue
+    df_filtered = df[df["payload"].str.contains(r"seq \d+", na=False)]
+    required_cols = ["rx lat", "rx long", "rx snr"]
+    if not all(col in df_filtered.columns for col in required_cols):
+        print(f"⚠️ В {csv_file} не хватает колонок {required_cols} — пропускаем.")
+        return None
 
-        df = df.dropna(subset=[lat_col, lon_col])
-        if len(df) == 0:
-            continue
+    df_filtered = df_filtered[required_cols].dropna()
+    df_filtered = df_filtered[
+        (df_filtered["rx lat"].apply(lambda x: isinstance(x, (int, float))))
+        & (df_filtered["rx long"].apply(lambda x: isinstance(x, (int, float))))
+        & (df_filtered["rx lat"].between(-90, 90))
+        & (df_filtered["rx long"].between(-180, 180))
+        & (df_filtered["rx snr"].apply(lambda x: isinstance(x, (int, float))))
+    ]
 
-        print(f"✅ Загружен {csv_file} ({len(df)} строк)")
-        all_data.append((df, lat_col, lon_col, rssi_col, snr_col))
+    if df_filtered.empty:
+        print(f"❌ В {csv_file} нет валидных данных.")
+        return None
 
-    if not all_data:
-        print("❌ Нет корректных CSV с нужными данными.")
+    # Собираем данные для heatmap
+    heat_data = []
+    for _, row in df_filtered.iterrows():
+        snr = float(row["rx snr"])
+        lat = float(row["rx lat"])
+        lon = float(row["rx long"])
+
+        # Нормализуем SNR: чем выше SNR — тем выше вес
+        weight = max(0.0, min(1.0, (snr + 21.0) / 33.0))
+        heat_data.append([lat, lon, weight])
+
+    if not heat_data:
+        return None
+
+    # Создаём FeatureGroup
+    layer_name = os.path.basename(csv_file).replace(".csv", "")
+    fg = folium.FeatureGroup(name=layer_name)
+
+    # Добавляем heatmap
+    HeatMap(heat_data, radius=20, blur=10, min_opacity=0.4, max_val=1.0).add_to(fg)
+
+    return fg
+
+
+def add_snr_legend(m):
+    # Создаём HTML-легенду
+    legend_html = """
+    <div style="
+        position: fixed; 
+        bottom: 50px; 
+        right: 10px; 
+        z-index: 999; 
+        background-color: white; 
+        padding: 10px; 
+        border: 2px solid grey;
+        border-radius: 5px;
+        font-family: Arial, sans-serif;
+        font-size: 12px;
+        box-shadow: 0 0 10px rgba(0,0,0,0.5);
+        ">
+        <b>SNR (dB)</b><br>
+        <div style="display: block;">
+            <div style="width: auto; height: 15px; background: linear-gradient(to right, red, yellow, green);"></div>
+            <div style="margin-top: 5px; display: flex; justify-content: space-between; width: auto; font-size: 10px;">
+                <span>-21</span>
+                <span>-13</span>
+                <span>-5</span>
+                <span>4</span>
+                <span>12</span>
+            </div>
+        </div>
+        <div style="font-size: 10px; margin-top: 5px;">
+            <i>Примечание: На карте "горячие" области (красно-жёлтые) = высокий SNR (хороший сигнал).</i>
+        </div>
+    </div>
+    """
+    m.get_root().html.add_child(folium.Element(legend_html))
+
+
+def main():
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    csv_files = glob.glob(os.path.join(script_dir, "*.csv"))
+
+    if not csv_files:
+        print("❌ Нет CSV-файлов в папке. Положите сюда результаты тестов.")
         return
 
-    first_df, lat_col, lon_col, *_ = all_data[0]
-    m = folium.Map(location=[first_df[lat_col].mean(), first_df[lon_col].mean()],
-                   zoom_start=13, tiles="OpenStreetMap", control_scale=True)
+    print(f"📁 Найдено {len(csv_files)} CSV-файлов. Обработка...")
 
-    # --- Добавляем все карты (как раньше) ---
+    # Базовая карта
+    first_df = pd.read_csv(csv_files[0])
+    first_df_filtered = first_df[first_df["payload"].str.contains(r"seq \d+", na=False)]
+    first_df_filtered = first_df_filtered[["rx lat", "rx long"]].dropna()
+    first_df_filtered = first_df_filtered[
+        (first_df_filtered["rx lat"].apply(lambda x: isinstance(x, (int, float))))
+        & (first_df_filtered["rx long"].apply(lambda x: isinstance(x, (int, float))))
+        & (first_df_filtered["rx lat"].between(-90, 90))
+        & (first_df_filtered["rx long"].between(-180, 180))
+    ]
+    if not first_df_filtered.empty:
+        center_lat = first_df_filtered["rx lat"].mean()
+        center_lon = first_df_filtered["rx long"].mean()
+    else:
+        center_lat, center_lon = 0, 0
+
+    m = folium.Map(location=[center_lat, center_lon], zoom_start=13, tiles="OpenStreetMap", control_scale=True)
+
+    # Measure Tool
+    m.add_child(
+        MeasureControl(
+            primary_length_unit="meters",
+            secondary_length_unit="miles",
+        )
+    )
+
+
+
+    # Добавляем базовые слои
     folium.TileLayer(
         tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-        attr="Tiles © Esri",
-        name="Esri WorldImagery",show=False,
+        attr="Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community",
+        name="Esri WorldImagery",
+        show=False,
     ).add_to(m)
 
     folium.TileLayer(
         tiles="https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
-        attr='Map data © OpenStreetMap contributors, SRTM | Style © OpenTopoMap (CC-BY-SA)',
-        name="OpenTopoMap",show=False,
+        attr='Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors,'
+        '<a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> '
+        '(<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)',
+        name="OpenTopoMap",
+        show=False,
     ).add_to(m)
 
-    folium.TileLayer("CartoDB positron", name="CartoDB Light").add_to(m)
-    folium.TileLayer("CartoDB dark_matter", name="CartoDB Dark").add_to(m)
+    folium.TileLayer(
+        tiles="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+        attr="Map tiles by CartoDB, under CC BY 3.0. Data by OpenStreetMap, under ODbL.",
+        name="CartoDB Positron",
+        show=False,
+    ).add_to(m)
 
-    # --- Добавляем тепловые карты ---
-    for df, lat_col, lon_col, rssi_col, snr_col in all_data:
-        # RSSI
-        if rssi_col:
-            heat_data_rssi = [
-                [row[lat_col], row[lon_col], max(0, min(1, (row[rssi_col] + 130) / 50))]
-                for _, row in df.iterrows() if not pd.isna(row[rssi_col])
-            ]
-            if heat_data_rssi:
-                HeatMap(
-                    heat_data_rssi,
-                    name=f"RSSI Heatmap ({os.path.basename(csv_file)})",
-                    radius=30,
-                    blur=10,
-                    min_opacity=0.4,
-                    gradient={0.0: 'blue', 0.5: 'lime', 0.75: 'yellow', 1.0: 'red'}
-                ).add_to(m)
+    folium.TileLayer(
+        tiles="https://{s}.basemaps.cartocdn.com/rastertiles/light_nolabels/{z}/{x}/{y}{r}.png",
+        attr="Map tiles by CartoDB, under CC BY 3.0. Data by OpenStreetMap, under ODbL.",
+        name="CartoDB Positron (No Labels)",
+        show=False,
+    ).add_to(m)
 
-        # SNR
-        if snr_col:
-            heat_data_snr = [
-                [row[lat_col], row[lon_col], max(0, min(1, (row[snr_col] + 20) / 40))]
-                for _, row in df.iterrows() if not pd.isna(row[snr_col])
-            ]
-            if heat_data_snr:
-                HeatMap(
-                    heat_data_snr,
-                    name=f"SNR Heatmap ({os.path.basename(csv_file)})",
-                    radius=30,
-                    blur=10,
-                    min_opacity=0.4,
-                    gradient={0.0: 'purple', 0.3: 'blue', 0.6: 'lime', 1.0: 'yellow'}
-                ).add_to(m)
+    folium.TileLayer(
+        tiles="https://{s}.basemaps.cartocdn.com/rastertiles/dark_nolabels/{z}/{x}/{y}{r}.png",
+        attr="Map tiles by CartoDB, under CC BY 3.0. Data by OpenStreetMap, under ODbL.",
+        name="CartoDB Dark Matter (No Labels)",
+        show=False,
+    ).add_to(m)
 
+    folium.TileLayer(
+        tiles="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+        attr="Map tiles by CartoDB, under CC BY 3.0. Data by OpenStreetMap, under ODbL.",
+        name="CartoDB Dark Matter",
+        show=False,
+    ).add_to(m)
+
+    # Добавляем слои для каждого CSV
+    for csv_file in csv_files:
+        layer = create_heatmap_layer(csv_file)
+        if layer:
+            layer.add_to(m)
+
+    # Добавляем легенду
+    add_snr_legend(m)
+
+    # Управление слоями
     folium.LayerControl(collapsed=False).add_to(m)
 
-    # --- Легенда сверху ---
-    legend_html = """
-    {% macro html(this=None, kwargs=None) %}
-    <div style="
-        position: fixed;
-        top: 10px; left: 50%;
-        transform: translateX(-50%);
-        width: 320px;
-        background: rgba(255, 255, 255, 0.92);
-        border-radius: 10px;
-        padding: 10px;
-        font-size: 13px;
-        z-index: 9999;
-        box-shadow: 0 0 10px rgba(0,0,0,0.3);
-    ">
-        <b>📶 RSSI (dBm)</b><br>
-        <div style="height:10px;background:linear-gradient(to right, blue, lime, yellow, red);margin:5px 0;"></div>
-        <span style="float:left;">−130</span><span style="float:right;">−80</span><br style="clear:both;">
-        <b>📡 SNR (dB)</b><br>
-        <div style="height:10px;background:linear-gradient(to right, purple, blue, lime, yellow);margin:5px 0;"></div>
-        <span style="float:left;">−20</span><span style="float:right;">+20</span>
-    </div>
-    {% endmacro %}
-    """
-    macro = MacroElement()
-    macro._template = Template(legend_html)
-    m.get_root().add_child(macro)
-
-    m.save(output_html)
-    print(f"✅ Тепловая карта создана: {output_html}")
+    output_file = "rangetest-map.html"
+    m.save(output_file)
+    print(f"✅ Готово! Откройте '{output_file}' в браузере.")
 
 
 if __name__ == "__main__":
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    csv_files = [os.path.join(script_dir, f) for f in os.listdir(script_dir) if f.endswith(".csv")]
-    if not csv_files:
-        print("❌ CSV не найдены.")
-    else:
-        create_heatmap(csv_files)
-
+    main()
