@@ -45,7 +45,7 @@ def create_heatmap_layer(csv_file):
         lon = float(row["rx long"])
 
         # Нормализуем SNR: чем выше SNR — тем выше вес
-        weight = max(0.0, min(1.0, (snr + 21.0) / 33.0))
+        weight = max(0.0, min(1.0, (snr + 21.0) / 33.3))
         heat_data.append([lat, lon, weight])
 
     if not heat_data:
@@ -80,7 +80,7 @@ def add_snr_legend(m):
         ">
         <b>SNR (dB)</b><br>
         <div style="display: block;">
-            <div style="width: auto; height: 15px; background: linear-gradient(to right, red, yellow, green);"></div>
+            <div style="width: auto; height: 15px; background: linear-gradient(to right, blue, cyan, yellow, red);"></div>
             <div style="margin-top: 5px; display: flex; justify-content: space-between; width: auto; font-size: 10px;">
                 <span>-21</span>
                 <span>-13</span>
