@@ -56,7 +56,14 @@ def create_heatmap_layer(csv_file):
     fg = folium.FeatureGroup(name=str(layer_name))
 
     # Добавляем heatmap
-    HeatMap(heat_data, radius=20, blur=10, min_opacity=0.4).add_to(fg)
+    HeatMap(
+        heat_data,
+        csv_file,
+        radius=15,
+        blur=10,
+        min_opacity=0.4,
+        # gradient={.4: "blue", .6: "cyan", .7: "lime", .8: "yellow", 1: "red"},
+    ).add_to(fg)
 
     return fg
 
@@ -124,7 +131,7 @@ def main():
     else:
         center_lat, center_lon = 0, 0
 
-    m = folium.Map(location=[center_lat, center_lon], zoom_start=13, tiles="OpenStreetMap", control_scale=True)
+    m = folium.Map(location=[center_lat, center_lon], zoom_start=17, tiles="OpenStreetMap", control_scale=True)
 
     # Measure Tool
     m.add_child(
