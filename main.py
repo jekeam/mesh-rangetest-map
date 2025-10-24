@@ -45,13 +45,13 @@ def create_heatmap(csv_files, output_html="rangetest-heatmap.html"):
     folium.TileLayer(
         tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
         attr="Tiles © Esri",
-        name="Esri WorldImagery"
+        name="Esri WorldImagery",show=False,
     ).add_to(m)
 
     folium.TileLayer(
         tiles="https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
         attr='Map data © OpenStreetMap contributors, SRTM | Style © OpenTopoMap (CC-BY-SA)',
-        name="OpenTopoMap"
+        name="OpenTopoMap",show=False,
     ).add_to(m)
 
     folium.TileLayer("CartoDB positron", name="CartoDB Light").add_to(m)
